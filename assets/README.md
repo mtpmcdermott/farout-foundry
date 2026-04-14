@@ -5,20 +5,28 @@ If you're reading this, you probably need a refresher on how the EC2 instance ma
 ## Architecture & Install Scripts
 
 ### `setup-foundry.sh`
-This is your foundational installation script. It is designed to be injected completely automatically when the EC2 instance first boots up via the AWS CDK (UserData). 
+This is your foundational installation and recovery script. It is designed to be injected completely automatically when the EC2 instance first boots up via the AWS CDK (UserData). 
 
-However, if you ever need to run it manually on a fresh Amazon Linux server, simply upload it and execute it:
+**Usage:**
 ```bash
 chmod +x setup-foundry.sh
-sudo ./setup-foundry.sh
+sudo ./setup-foundry.sh [OPTIONS]
 ```
+
+**Options:**
+- `(no args)`: Default install. Automatically restores data from `s3://.../Current/data` if it exists.
+- `--clean`: Force a clean install. Bypasses S3 validation/restoration and starts fresh.
+- `--backup <timestamp>`: Restores from a specific point-in-time backup (e.g. `2026-04-11:13:30`).
+- `--list-backups`: Lists all available point-in-time backups in S3 and exits.
+- `--help`: Display usage information.
 
 **What it does:**
 1. Installs Docker and Docker Compose.
-2. Generates the Foundry and NGINX configs.
-3. Automatically requests HTTPS certs via Let's Encrypt for the domain.
-4. Wraps everything into a durable `systemd` service (`foundryvtt.service`).
-5. Generates the continuous backup tools!
+2. **Restores Data**: Syncs data from S3 (either `Current/` or a specific `Backups/` timestamp) to `/home/ec2-user/data`.
+3. Generates the Foundry and NGINX configs.
+4. Automatically requests HTTPS certs via Let's Encrypt for the domain.
+5. Wraps everything into a durable `systemd` service (`foundryvtt.service`).
+6. Sets up the nightly S3 sync (`foundry-sync.timer`) and manual backup scripts.
 
 ### Process Management
 Thanks to `setup-foundry.sh`, Foundry isn't just a raw docker container—it acts as an OS-level service. Use these commands to control the server:
