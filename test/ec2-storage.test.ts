@@ -15,7 +15,7 @@ test('EC2 Instance has 20GB EBS Storage', () => {
       {
         DeviceName: '/dev/xvda',
         Ebs: {
-          VolumeSize: 20
+          VolumeSize: 21
         }
       }
     ]

@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as s3_assets from 'aws-cdk-lib/aws-s3-assets';
 import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 
 export class ReallyFaroutCoolStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -116,6 +117,45 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
       `chmod +x ${localDest}/setup-foundry.sh`,
       `cd ${localDest} && ./setup-foundry.sh`
     );
+
+    // Schedule: Start every Friday at 3pm Pacific Time, Stop every Saturday at 1am Pacific Time
+    const schedulerRole = new iam.Role(this, 'FoundryVttSchedulerRole', {
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
+      description: 'Role for EventBridge Scheduler to start/stop the Foundry VTT instance',
+    });
+
+    schedulerRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['ec2:StartInstances', 'ec2:StopInstances'],
+      resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/${instance.instanceId}`],
+    }));
+
+    // Start Schedule: Friday 15:00 America/Los_Angeles
+    new scheduler.CfnSchedule(this, 'StartFoundryVttSchedule', {
+      flexibleTimeWindow: {
+        mode: 'OFF',
+      },
+      scheduleExpression: 'cron(0 15 ? * FRI *)',
+      scheduleExpressionTimezone: 'America/Los_Angeles',
+      target: {
+        arn: 'arn:aws:scheduler:::aws-sdk:ec2:startInstances',
+        roleArn: schedulerRole.roleArn,
+        input: JSON.stringify({ InstanceIds: [instance.instanceId] }),
+      },
+    });
+
+    // Stop Schedule: Saturday 01:00 America/Los_Angeles
+    new scheduler.CfnSchedule(this, 'StopFoundryVttSchedule', {
+      flexibleTimeWindow: {
+        mode: 'OFF',
+      },
+      scheduleExpression: 'cron(0 1 ? * SAT *)',
+      scheduleExpressionTimezone: 'America/Los_Angeles',
+      target: {
+        arn: 'arn:aws:scheduler:::aws-sdk:ec2:stopInstances',
+        roleArn: schedulerRole.roleArn,
+        input: JSON.stringify({ InstanceIds: [instance.instanceId] }),
+      },
+    });
 
     // Output the public IP
     new cdk.CfnOutput(this, 'FoundryVttPublicIp', {

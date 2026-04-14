@@ -33,3 +33,11 @@ Run the deploy script. You can optionally pass your desired domain name as the f
 * `npm run watch`   watch for changes and compile
 * `npm run test`    perform the jest unit tests
 * `npx cdk diff`    compare deployed stack with current state
+
+## Automatic Scheduling
+
+The EC2 instance is configured to automatically turn on and off using AWS EventBridge Scheduler:
+- **Turn ON:** Every Friday at 3:00 PM Pacific Time.
+- **Turn OFF:** Every Saturday at 1:00 AM Pacific Time.
+
+This schedule is designed to save costs while ensuring the server is available for weekend sessions.
