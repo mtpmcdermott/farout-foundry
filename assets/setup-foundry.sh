@@ -68,7 +68,7 @@ elif [ "$MODE" == "backup" ]; then
 else
     # Default behavior: try to sync from Current/
     echo "Checking for existing data in Current/..."
-    if aws s3 ls s3://${BUCKET}/Current/data/ --recursive | grep -q '[A-Za-z0-9]'; then
+    if aws s3 ls s3://${BUCKET}/Current/data/ >/dev/null 2>&1; then
         echo "Data found! Restoring from s3://${BUCKET}/Current/data..."
         aws s3 sync s3://${BUCKET}/Current/data /home/ec2-user/data
         sudo chown -R ec2-user:ec2-user /home/ec2-user/data
@@ -90,7 +90,7 @@ sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-
 sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 ### ====== CREATE APP DIRECTORY ======
-mkdir -p ~/foundry && cd ~/foundry
+mkdir -p /home/ec2-user/foundry && cd /home/ec2-user/foundry
 
 
 ### ====== CREATE DOCKER COMPOSE FILE ======
@@ -103,7 +103,7 @@ services:
     environment:
       TZ: America/Los_Angeles
       CONTAINER_PRESERVE_CONFIG: "true"
-      FOUNDRY_HOSTNAME: really.farout.cool 
+      FOUNDRY_HOSTNAME: ${DOMAIN_NAME:-really.farout.cool}
       FOUNDRY_USERNAME: ${FOUNDRY_USERNAME}
       FOUNDRY_PASSWORD: ${FOUNDRY_PASSWORD}
       FOUNDRY_ADMIN_KEY: ${FOUNDRY_ADMIN_KEY}
@@ -176,9 +176,20 @@ sudo systemctl enable --now foundryvtt
 
 ### ====== OPTIONAL: SETUP HTTPS ======
 if [ ! -z "$DOMAIN_NAME" ]; then
-  echo "Setting up HTTPS with Let's Encrypt..."
+  echo "Setting up HTTPS for $DOMAIN_NAME with Let's Encrypt..."
 
   mkdir -p certbot/conf certbot/www
+
+  # Initial check: Ensure the domain resolves to this instance's IP
+  # This helps avoid Rate Limiting from Let's Encrypt if DNS hasn't propagated
+  PUBLIC_IP=$(curl -s http://checkip.amazonaws.com)
+  RESOLVED_IP=$(dig +short "$DOMAIN_NAME" | tail -n1)
+
+  if [ "$PUBLIC_IP" != "$RESOLVED_IP" ]; then
+    echo "WARNING: DNS for $DOMAIN_NAME ($RESOLVED_IP) does not match Public IP ($PUBLIC_IP)."
+    echo "Waiting 30 seconds for DNS propagation..."
+    sleep 30
+  fi
 
   docker run --rm \
   -v "$(pwd)/certbot/conf:/etc/letsencrypt" \
@@ -192,9 +203,11 @@ if [ ! -z "$DOMAIN_NAME" ]; then
   --non-interactive \
   -d "$DOMAIN_NAME"
 
-  echo "Updating NGINX for HTTPS..."
+  # Verify if the certificate was actually created before updating NGINX
+  if [ -f "certbot/conf/live/$DOMAIN_NAME/fullchain.pem" ]; then
+    echo "Certificates found! Updating NGINX for HTTPS..."
 
-  cat <<EOF > nginx.conf
+    cat <<EOF > nginx.conf
 events {}
 
 http {
@@ -214,7 +227,17 @@ http {
     }
 
     location / {
-      return 301 https://\$host\$request_uri;
+      #return 301 https://\$host\$request_uri;
+      proxy_http_version 1.1;
+      proxy_set_header Host \$host;
+      proxy_set_header X-Real-IP \$remote_addr;
+      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto \$scheme;
+      proxy_set_header Upgrade \$http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_buffers 8 16k;
+      proxy_buffer_size 32k;
+      client_max_body_size 300M; # Essential for uploading large maps/assets
     }
   }
 
@@ -242,9 +265,12 @@ http {
 }
 EOF
 
-  docker compose restart nginx
-
-  echo "HTTPS enabled!"
+    docker compose restart nginx
+    echo "HTTPS enabled!"
+  else
+    echo "ERROR: Let's Encrypt certificate generation failed for $DOMAIN_NAME."
+    echo "Check Certbot logs. NGINX will continue to serve via HTTP."
+  fi
 fi
 
 ### ====== SETUP BACKUPS ======
