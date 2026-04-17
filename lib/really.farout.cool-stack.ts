@@ -90,7 +90,7 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
         subnetType: ec2.SubnetType.PUBLIC,
       },
       // Note: A key pair 'ftt' was used in the previous setup. We attach it if it exists.
-      keyName: 'ftt', 
+      keyName: 'ftt',
       blockDevices: [
         {
           deviceName: '/dev/xvda',
@@ -143,12 +143,12 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
       },
     });
 
-    // Stop Schedule: Saturday 01:00 America/Los_Angeles
+    // Stop Schedule: Saturday 03:00 America/Los_Angeles
     new scheduler.CfnSchedule(this, 'StopFoundryVttSchedule', {
       flexibleTimeWindow: {
         mode: 'OFF',
       },
-      scheduleExpression: 'cron(0 1 ? * SAT *)',
+      scheduleExpression: 'cron(0 3 ? * SAT *)',
       scheduleExpressionTimezone: 'America/Los_Angeles',
       target: {
         arn: 'arn:aws:scheduler:::aws-sdk:ec2:stopInstances',
