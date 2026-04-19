@@ -9,6 +9,12 @@ import * as path from 'path';
 import * as s3_assets from 'aws-cdk-lib/aws-s3-assets';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as scheduler from 'aws-cdk-lib/aws-scheduler';
+import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as certificatemanager from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 
 export class ReallyFaroutCoolStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -163,6 +169,42 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
       description: 'Public IP of the Foundry VTT Instance',
     });
 
+    // Discord Bot Handler
+    const discordPublicKey = ssm.StringParameter.valueForStringParameter(this, '/foundry/discord/public_key');
+
+    const discordHandler = new lambdaNodejs.NodejsFunction(this, 'DiscordInteractionHandler', {
+      entry: path.join(__dirname, 'discord-handler', 'index.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      environment: {
+        INSTANCE_ID: instance.instanceId,
+        DISCORD_PUBLIC_KEY: discordPublicKey,
+      },
+    });
+
+    // Grant Lambda permission to start/stop the instance
+    discordHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ec2:StartInstances', 'ec2:StopInstances'],
+      resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/${instance.instanceId}`],
+    }));
+
+    discordHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ec2:DescribeInstances'],
+      resources: ['*'],
+    }));
+
+    // API Gateway for Discord to send webhooks to
+    const api = new apigateway.RestApi(this, 'DiscordInteractionsApi', {
+      restApiName: 'Discord Interactions Service',
+      description: 'API Gateway endpoint for Discord slash commands',
+      endpointTypes: [apigateway.EndpointType.REGIONAL],
+    });
+
+    const integration = new apigateway.LambdaIntegration(discordHandler);
+    api.root.addMethod('POST', integration);
+
+    let apiUrl = api.url;
+
     // DNS Configuration
     if (domainName.endsWith('.farout.cool') || domainName === 'farout.cool') {
       const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'FaroutCoolZone', {
@@ -176,6 +218,32 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
         target: route53.RecordTarget.fromIpAddresses(instance.instancePublicIp),
         ttl: cdk.Duration.minutes(1),
       });
+
+      const botDomainName = 'bot.' + domainName;
+
+      const certificate = new certificatemanager.Certificate(this, 'BotApiCertificate', {
+        domainName: botDomainName,
+        validation: certificatemanager.CertificateValidation.fromDns(zone),
+      });
+
+      const customDomain = api.addDomainName('BotDomainName', {
+        domainName: botDomainName,
+        certificate: certificate,
+        endpointType: apigateway.EndpointType.REGIONAL,
+      });
+
+      new route53.ARecord(this, 'BotApiDnsRecord', {
+        zone,
+        recordName: botDomainName,
+        target: route53.RecordTarget.fromAlias(new route53Targets.ApiGatewayDomain(customDomain)),
+      });
+
+      apiUrl = `https://${botDomainName}/`;
     }
+
+    new cdk.CfnOutput(this, 'DiscordInteractionsEndpoint', {
+      value: apiUrl,
+      description: 'The Discord Interactions Endpoint URL',
+    });
   }
 }

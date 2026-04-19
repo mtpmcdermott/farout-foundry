@@ -41,3 +41,24 @@ The EC2 instance is configured to automatically turn on and off using AWS EventB
 - **Turn OFF:** Every Saturday at 1:00 AM Pacific Time.
 
 This schedule is designed to save costs while ensuring the server is available for weekend sessions.
+
+## Discord Bot Integration
+
+You can manage the FoundryVTT server directly from Discord using slash commands (e.g., `/foundry start`, `/foundry stop`, `/foundry status`).
+
+### Setup Instructions
+
+1. **Create a Discord Application**: Go to the [Discord Developer Portal](https://discord.com/developers/applications) and create a new application.
+2. **Gather Credentials**:
+   - Navigate to the **General Information** tab. Copy the "Application ID" (an 18-to-20 digit number) and "Public Key" (a 64-character hex string).
+   - Navigate to the **Bot** tab, and click "Reset Token" to reveal the bot secret token.
+   - Enter these explicitly in your `secrets.env` file (refer to `secrets.env.example`):
+     - `DISCORD_APPLICATION_ID` (the 18-to-20 digit number)
+     - `DISCORD_PUBLIC_KEY` (the 64-character hex string)
+     - `DISCORD_BOT_TOKEN`
+3. **Deploy Infrastructure**: Run `./deploy.sh` to seamlessly set up the AWS API Gateway, Lambda Functions, and SSM Parameter logic.
+4. **Link the bot to API Gateway**:
+   - Upon successful deployment, the console will output a Custom webhook URL named `DiscordInteractionsEndpoint` (e.g., `https://bot.really.farout.cool/`).
+   - Paste this URL directly into the **Interactions Endpoint URL** input box back inside the Discord Portal's General Information tab, and click Save to perform the automated security verification.
+5. **Register Commands**: Run `npm run register-commands` locally. This script pushes the `/foundry` command definitions directly to Discord.
+6. **Invite the Bot**: Go to **OAuth2 -> URL Generator**, tick `applications.commands` and `bot`, select `Send Messages` for the bot permissions, and finally use the generated link to invite the bot to your Discord server!
