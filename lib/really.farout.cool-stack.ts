@@ -4,7 +4,6 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
 
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as fs from 'fs';
 import * as path from 'path';
 import * as s3_assets from 'aws-cdk-lib/aws-s3-assets';
 import * as route53 from 'aws-cdk-lib/aws-route53';
@@ -72,10 +71,9 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
     securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'Allow SSH');
 
     // Instance Profile wrapping the role
-    const instanceProfile = new iam.CfnInstanceProfile(this, 'FoundryVttInstanceProfile', {
+    new iam.CfnInstanceProfile(this, 'FoundryVttInstanceProfile', {
       roles: [instanceRole.roleName],
     });
-
 
     // Package the entire assets directory as an S3 asset
     const instanceAssets = new s3_assets.Asset(this, 'FoundryAssets', {
@@ -88,8 +86,10 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
     // EC2 Instance
     const instance = new ec2.Instance(this, 'FoundryVttInstance', {
       vpc,
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
-      machineImage: ec2.MachineImage.latestAmazonLinux2023(),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.M7G, ec2.InstanceSize.LARGE),
+      machineImage: ec2.MachineImage.latestAmazonLinux2023({
+        cpuType: ec2.AmazonLinuxCpuType.ARM_64,
+      }),
       securityGroup: securityGroup,
       role: instanceRole,
       vpcSubnets: {
@@ -103,6 +103,11 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
           volume: ec2.BlockDeviceVolume.ebs(21),
         },
       ],
+    });
+
+    // Elastic IP for a static public IP address
+    const eip = new ec2.CfnEIP(this, 'FoundryVttEip', {
+      instanceId: instance.instanceId,
     });
 
     // Provide the setup script and all other assets via S3 download
@@ -163,12 +168,6 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
       },
     });
 
-    // Output the public IP
-    new cdk.CfnOutput(this, 'FoundryVttPublicIp', {
-      value: instance.instancePublicIp,
-      description: 'Public IP of the Foundry VTT Instance',
-    });
-
     // Discord Bot Handler
     const discordPublicKey = ssm.StringParameter.valueForStringParameter(this, '/foundry/discord/public_key');
 
@@ -215,7 +214,7 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
       new route53.ARecord(this, 'FoundryVttDnsRecord', {
         zone,
         recordName: domainName,
-        target: route53.RecordTarget.fromIpAddresses(instance.instancePublicIp),
+        target: route53.RecordTarget.fromIpAddresses(eip.ref),
         ttl: cdk.Duration.minutes(1),
       });
 
@@ -240,6 +239,12 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
 
       apiUrl = `https://${botDomainName}/`;
     }
+
+    // Outputs
+    new cdk.CfnOutput(this, 'FoundryVttStaticIp', {
+      value: eip.ref,
+      description: 'Static Elastic IP of the Foundry VTT Instance',
+    });
 
     new cdk.CfnOutput(this, 'DiscordInteractionsEndpoint', {
       value: apiUrl,
