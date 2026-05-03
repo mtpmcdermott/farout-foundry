@@ -95,7 +95,23 @@ sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 mkdir -p /home/ec2-user/foundry && cd /home/ec2-user/foundry
 
 
+### ====== CREATE DOCKER COMPOSE ENV FILE ======
+# Secrets live in .env (chmod 600), not docker-compose.yml. Compose auto-loads
+# .env from the working directory and substitutes ${VAR} references at runtime.
+cat <<EOF > .env
+FOUNDRY_HOSTNAME=${DOMAIN_NAME:-really.farout.cool}
+FOUNDRY_USERNAME=${FOUNDRY_USERNAME}
+FOUNDRY_PASSWORD=${FOUNDRY_PASSWORD}
+FOUNDRY_ADMIN_KEY=${FOUNDRY_ADMIN_KEY}
+FOUNDRY_LICENSE_KEY=${FOUNDRY_LICENSE_KEY}
+FOUNDRY_WORLD=${FOUNDRY_WORLD}
+EOF
+chmod 600 .env
+
 ### ====== CREATE DOCKER COMPOSE FILE ======
+# Use \${VAR} so bash leaves the placeholders intact for compose to interpolate
+# from .env at runtime. FOUNDRY_VERSION is a build-time constant, so it gets
+# substituted by bash here.
 cat <<EOF > docker-compose.yml
 services:
   foundry:
@@ -103,15 +119,11 @@ services:
     container_name: foundry
     restart: unless-stopped
     hostname: foundry-server
+    env_file:
+      - .env
     environment:
       TZ: America/Los_Angeles
       CONTAINER_PRESERVE_CONFIG: "true"
-      FOUNDRY_HOSTNAME: ${DOMAIN_NAME:-really.farout.cool}
-      FOUNDRY_USERNAME: ${FOUNDRY_USERNAME}
-      FOUNDRY_PASSWORD: ${FOUNDRY_PASSWORD}
-      FOUNDRY_ADMIN_KEY: ${FOUNDRY_ADMIN_KEY}
-      FOUNDRY_LICENSE_KEY: ${FOUNDRY_LICENSE_KEY}
-      FOUNDRY_WORLD: ${FOUNDRY_WORLD}
 
     volumes:
       - /home/ec2-user/data:/data
