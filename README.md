@@ -15,7 +15,13 @@ FOUNDRY_USERNAME=Something
 FOUNDRY_PASSWORD=YourPasswordHere
 FOUNDRY_ADMIN_KEY=YourAdminKeyHere
 FOUNDRY_LICENSE_KEY=YourLicenseHere
+FOUNDRY_WORLD=your-world-id
 ```
+
+### 🚀 Automation Features
+- **Auto-Licensing**: The server automatically applies your license key on launch.
+- **Auto-Launch World**: By setting `FOUNDRY_WORLD` to your world's ID (the folder name in `Data/worlds`), the server will automatically launch that world so players can join immediately.
+- **Admin Password Persistence**: Your `FOUNDRY_ADMIN_KEY` is enforced on every launch, ensuring your admin access is never lost.
 
 ### 2. Run Deploy
 Run the deploy script. You can optionally pass your desired domain name as the first argument; otherwise, it defaults to `really.farout.cool`. This script handles pushing your encrypted secrets to SSM and deploying the CDK stack:

@@ -20,6 +20,7 @@ FOUNDRY_USERNAME=$(aws ssm get-parameter --name "/foundry/username" --region "$R
 FOUNDRY_PASSWORD=$(aws ssm get-parameter --name "/foundry/password" --region "$REGION" --with-decryption --query "Parameter.Value" --output text)
 FOUNDRY_ADMIN_KEY=$(aws ssm get-parameter --name "/foundry/admin_key" --region "$REGION" --with-decryption --query "Parameter.Value" --output text)
 FOUNDRY_LICENSE_KEY=$(aws ssm get-parameter --name "/foundry/license_key" --region "$REGION" --with-decryption --query "Parameter.Value" --output text)
+FOUNDRY_WORLD=$(aws ssm get-parameter --name "/foundry/world" --region "$REGION" --query "Parameter.Value" --output text || echo "")
 
 FOUNDRY_VERSION="13.351"
 
@@ -101,6 +102,7 @@ services:
     image: felddy/foundryvtt:${FOUNDRY_VERSION}
     container_name: foundry
     restart: unless-stopped
+    hostname: foundry-server
     environment:
       TZ: America/Los_Angeles
       CONTAINER_PRESERVE_CONFIG: "true"
@@ -108,6 +110,8 @@ services:
       FOUNDRY_USERNAME: ${FOUNDRY_USERNAME}
       FOUNDRY_PASSWORD: ${FOUNDRY_PASSWORD}
       FOUNDRY_ADMIN_KEY: ${FOUNDRY_ADMIN_KEY}
+      FOUNDRY_LICENSE_KEY: ${FOUNDRY_LICENSE_KEY}
+      FOUNDRY_WORLD: ${FOUNDRY_WORLD}
 
     volumes:
       - /home/ec2-user/data:/data
