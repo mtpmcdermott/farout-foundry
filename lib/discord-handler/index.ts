@@ -1,8 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { verifyKey, InteractionType, InteractionResponseType } from 'discord-interactions';
 import { EC2Client, StartInstancesCommand, StopInstancesCommand, DescribeInstancesCommand } from '@aws-sdk/client-ec2';
+import { SchedulerClient, CreateScheduleCommand } from '@aws-sdk/client-scheduler';
 
 const ec2 = new EC2Client({});
+const schedulerClient = new SchedulerClient({});
 const INSTANCE_ID = process.env.INSTANCE_ID as string;
 const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY as string;
 
@@ -53,6 +55,41 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         try {
           await ec2.send(new StartInstancesCommand({ InstanceIds: [INSTANCE_ID] }));
           responseMessage = 'Starting FoundryVTT server... It may take a minute or two to become available.';
+
+          // Check if today is Friday in Pacific Time
+          const now = new Date();
+          const ptDateStr = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Los_Angeles',
+            weekday: 'long'
+          }).format(now);
+          const isFridayPT = ptDateStr === 'Friday';
+
+          if (!isFridayPT) {
+            const threeHoursLater = new Date(Date.now() + 3 * 60 * 60 * 1000);
+            const stopTimeStr = threeHoursLater.toISOString().substring(0, 19);
+            const stopTimeDisplay = new Intl.DateTimeFormat('en-US', {
+              timeZone: 'America/Los_Angeles',
+              hour: 'numeric',
+              minute: '2-digit',
+              timeZoneName: 'short'
+            }).format(threeHoursLater);
+
+            await schedulerClient.send(new CreateScheduleCommand({
+              Name: `AdhocStopFoundryVttSchedule-${Date.now()}`,
+              ActionAfterCompletion: 'DELETE',
+              ScheduleExpression: `at(${stopTimeStr})`,
+              Target: {
+                Arn: 'arn:aws:scheduler:::aws-sdk:ec2:stopInstances',
+                RoleArn: process.env.SCHEDULER_ROLE_ARN,
+                Input: JSON.stringify({ InstanceIds: [INSTANCE_ID] }),
+              },
+              FlexibleTimeWindow: {
+                Mode: 'OFF',
+              },
+            }));
+
+            responseMessage += `\n**Note: The server will automatically stop at ${stopTimeDisplay}.**`;
+          }
         } catch (error) {
           console.error(error);
           responseMessage = `Failed to start server: ${(error as Error).message}`;

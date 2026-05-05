@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.1032.0",
+    "@aws-sdk/client-scheduler": "^3.1043.0",
     "aws-cdk-lib": "^2.248.0",
     "constructs": "^10.5.0",
     "discord-interactions": "^4.4.0"

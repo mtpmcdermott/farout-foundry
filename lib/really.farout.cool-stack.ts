@@ -178,6 +178,7 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
       environment: {
         INSTANCE_ID: instance.instanceId,
         DISCORD_PUBLIC_KEY: discordPublicKey,
+        SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
       },
     });
 
@@ -190,6 +191,18 @@ export class ReallyFaroutCoolStack extends cdk.Stack {
     discordHandler.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ec2:DescribeInstances'],
       resources: ['*'],
+    }));
+
+    // Grant Lambda permission to create EventBridge Schedules
+    discordHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['scheduler:CreateSchedule'],
+      resources: [`arn:aws:scheduler:${this.region}:${this.account}:schedule/default/AdhocStopFoundryVttSchedule*`],
+    }));
+
+    // Grant Lambda permission to pass the scheduler role
+    discordHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['iam:PassRole'],
+      resources: [schedulerRole.roleArn],
     }));
 
     // API Gateway for Discord to send webhooks to
